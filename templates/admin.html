@@ -1,0 +1,764 @@
+{% extends "base.html" %}
+
+{% block title %}Admin Dashboard - Care Register{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col-12">
+            <h1 class="h3 mb-0 text-gray-800">
+                <i class="fas fa-tachometer-alt me-2"></i>Admin Dashboard
+            </h1>
+            <div class="d-flex justify-content-between align-items-center">
+                <p class="text-muted mb-0">Manage and monitor all care facilities</p>
+                <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#managementModal">
+                    <i class="fas fa-cog me-2"></i>Manage System
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Location Statistics Cards -->
+    <div class="row mb-4">
+        {% for location in location_stats %}
+        <div class="col-xl-4 col-lg-6 mb-3">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-header bg-gradient-primary text-white border-0">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="mb-0 fw-bold">{{ location.name }}</h6>
+                            <small class="opacity-75">{{ location.address }}</small>
+                        </div>
+                        <i class="fas fa-home fa-lg opacity-75"></i>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="row text-center">
+                        <div class="col-4">
+                            <button class="btn btn-link p-0 text-decoration-none" 
+                                    onclick="showPatientsModal('{{ location.name }}', {{ location.id }})"
+                                    title="Click to see who is on site">
+                                <h3 class="text-success mb-0 fw-bold">{{ location.patients_on_site }}</h3>
+                            </button>
+                            <small class="text-muted d-block">On Site</small>
+                        </div>
+                        <div class="col-4">
+                            <button class="btn btn-link p-0 text-decoration-none" 
+                                    onclick="showAllPatientsModal('{{ location.name }}', {{ location.id }})"
+                                    title="Click to see all registered clients">
+                                <h3 class="text-primary mb-0 fw-bold">{{ location.registered_patients }}</h3>
+                            </button>
+                            <small class="text-muted d-block">Total Clients</small>
+                        </div>
+                        <div class="col-4">
+                            <h3 class="text-info mb-0 fw-bold">
+                                {{ ((location.patients_on_site / location.registered_patients * 100) if location.registered_patients > 0 else 0) | round }}%
+                            </h3>
+                            <small class="text-muted d-block">Clients on Site</small>
+                        </div>
+                    </div>
+                    <div class="progress mt-3" style="height: 10px;">
+                        <div class="progress-bar bg-gradient-success" role="progressbar" 
+                             style="width: {{ ((location.patients_on_site / location.registered_patients * 100) if location.registered_patients > 0 else 0) }}%">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    
+    <!-- Daily Activity Chart -->
+    {% if daily_stats %}
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white border-bottom">
+                    <h5 class="mb-0 fw-bold text-gray-800">
+                        <i class="fas fa-chart-line me-2 text-primary"></i>Daily Activity Trends
+                    </h5>
+                    <small class="text-muted">Last 7 days activity overview</small>
+                </div>
+                <div class="card-body">
+                    <canvas id="activityChart" width="400" height="100"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+    
+    <!-- Currently On Site Summary -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-gradient-success text-white border-0">
+                    <h5 class="mb-0 fw-bold">
+                        <i class="fas fa-users me-2"></i>Currently On Site ({{ currently_on_site|length }})
+                    </h5>
+                    <small class="opacity-75">Click facility cards above to see detailed client lists</small>
+                </div>
+                <div class="card-body">
+                    {% if currently_on_site %}
+                    {% set current_location = '' %}
+                    {% for patient in currently_on_site %}
+                        {% if patient.location_name != current_location %}
+                            {% if current_location != '' %}</div></div>{% endif %}
+                            <div class="mb-4">
+                                <h6 class="text-primary mb-3 border-bottom pb-2">
+                                    <i class="fas fa-map-marker-alt me-2"></i>{{ patient.location_name }}
+                                </h6>
+                                <div class="row">
+                            {% set current_location = patient.location_name %}
+                        {% endif %}
+                        <div class="col-md-4 col-lg-3 mb-2">
+                            <div class="card border-success">
+                                <div class="card-body text-center p-3">
+                                    <div class="mb-2">
+                                        <i class="fas fa-user-check text-success fa-lg"></i>
+                                    </div>
+                                    <h6 class="mb-1 fw-bold">{{ patient.patient_name }}</h6>
+                                    <small class="text-muted d-block">Since {{ patient.ts_utc[:16] }}</small>
+                                    <small class="text-info d-block">
+                                        <i class="fas fa-user-nurse me-1"></i>{{ patient.primary_carer }}
+                                    </small>
+                                </div>
+                            </div>
+                        </div>
+                    {% endfor %}
+                    </div></div>
+                    {% else %}
+                    <div class="text-center py-4">
+                        <i class="fas fa-user-clock fa-3x text-muted mb-3"></i>
+                        <p class="text-muted mb-0">No clients currently on site.</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Filters -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white border-bottom">
+                    <h5 class="mb-0 fw-bold text-gray-800">
+                        <i class="fas fa-filter me-2 text-primary"></i>Event Log & Filters
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <form method="GET" class="row g-3">
+                        <div class="col-md-3">
+                            <label for="date_filter" class="form-label fw-semibold">
+                                <i class="fas fa-calendar me-1"></i>Date Range
+                            </label>
+                            <select class="form-select" id="date_filter" name="date_filter">
+                                <option value="today" {{ 'selected' if date_filter == 'today' }}>Today</option>
+                                <option value="week" {{ 'selected' if date_filter == 'week' }}>Last 7 Days</option>
+                                <option value="all" {{ 'selected' if date_filter == 'all' }}>All Time</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label for="location_filter" class="form-label fw-semibold">
+                                <i class="fas fa-map-marker-alt me-1"></i>Facility
+                            </label>
+                            <select class="form-select" id="location_filter" name="location_filter">
+                                <option value="">All Facilities</option>
+                                {% for location in locations %}
+                                <option value="{{ location.id }}" {{ 'selected' if location_filter == location.id|string }}>
+                                    {{ location.name }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label for="patient_search" class="form-label fw-semibold">
+                                <i class="fas fa-search me-1"></i>Client Name
+                            </label>
+                            <input type="text" class="form-control" id="patient_search" name="patient_search" 
+                                   value="{{ patient_search }}" placeholder="Search client name...">
+                        </div>
+                        <div class="col-md-2 d-flex align-items-end">
+                            <div class="btn-group w-100" role="group">
+                                <button type="submit" class="btn btn-primary">
+                                    <i class="fas fa-filter me-1"></i>Filter
+                                </button>
+                                <a href="{{ url_for('export_csv', date_filter=date_filter, patient_search=patient_search, location_filter=location_filter) }}" 
+                                   class="btn btn-success">
+                                    <i class="fas fa-download me-1"></i>CSV
+                                </a>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Recent Events -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white border-bottom">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h5 class="mb-0 fw-bold text-gray-800">
+                                <i class="fas fa-list me-2 text-primary"></i>Recent Events
+                            </h5>
+                            <small class="text-muted">{{ recent_events|length }} events found</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body">
+                    {% if recent_events %}
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle">
+                            <thead class="table-light">
+                                <tr>
+                                    <th class="fw-bold">
+                                        <i class="fas fa-clock me-1"></i>Time
+                                    </th>
+                                    <th class="fw-bold">
+                                        <i class="fas fa-user me-1"></i>Client
+                                    </th>
+                                    <th class="fw-bold">
+                                        <i class="fas fa-map-marker-alt me-1"></i>Facility
+                                    </th>
+                                    <th class="fw-bold">
+                                        <i class="fas fa-exchange-alt me-1"></i>Event
+                                    </th>
+                                    <th class="fw-bold">Left With</th>
+                                    <th class="fw-bold">Transport</th>
+                                    <th class="fw-bold">Notes</th>
+                                    <th class="fw-bold">
+                                        <i class="fas fa-user-nurse me-1"></i>Carer
+                                    </th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for event in recent_events %}
+                                <tr>
+                                    <td>
+                                        <small class="text-muted">{{ event.ts_utc[:16] }}</small>
+                                    </td>
+                                    <td class="fw-semibold">{{ event.patient_name }}</td>
+                                    <td>
+                                        <small class="text-muted">{{ event.location_name }}</small>
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-{{ 'success' if event.event_type == 'ARRIVED' else 'warning' }} px-3 py-2">
+                                            <i class="fas fa-{{ 'sign-in-alt' if event.event_type == 'ARRIVED' else 'sign-out-alt' }} me-1"></i>
+                                            {{ event.event_type }}
+                                        </span>
+                                    </td>
+                                    <td>{{ event.left_with or '' }}</td>
+                                    <td>{{ event.transport_mode or '' }}</td>
+                                    <td>
+                                        {% if event.notes %}
+                                        <span title="{{ event.notes }}" class="text-truncate d-inline-block" style="max-width: 150px;">
+                                            {{ event.notes[:30] }}{% if event.notes|length > 30 %}...{% endif %}
+                                        </span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <small class="text-info">{{ event.carer_name }}</small>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="text-center py-5">
+                        <i class="fas fa-inbox fa-3x text-muted mb-3"></i>
+                        <p class="text-muted mb-0">No events found for the selected filters.</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal for showing patients on site -->
+<div class="modal fade" id="patientsModal" tabindex="-1" aria-labelledby="patientsModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title fw-bold" id="patientsModalLabel">
+                    <i class="fas fa-users me-2"></i>Clients Currently On Site
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="patientsModalBody">
+                <div class="text-center">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal for showing all registered patients -->
+<div class="modal fade" id="allPatientsModal" tabindex="-1" aria-labelledby="allPatientsModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-info text-white">
+                <h5 class="modal-title fw-bold" id="allPatientsModalLabel">
+                    <i class="fas fa-list me-2"></i>All Registered Clients
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="allPatientsModalBody">
+                <div class="text-center">
+                    <div class="spinner-border text-info" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Management Modal -->
+<div class="modal fade" id="managementModal" tabindex="-1" aria-labelledby="managementModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header bg-warning text-dark">
+                <h5 class="modal-title fw-bold" id="managementModalLabel">
+                    <i class="fas fa-cog me-2"></i>System Management
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <ul class="nav nav-tabs" id="managementTabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="locations-tab" data-bs-toggle="tab" 
+                                data-bs-target="#locations" type="button" role="tab">
+                            <i class="fas fa-map-marker-alt me-1"></i>Locations
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="users-tab" data-bs-toggle="tab" 
+                                data-bs-target="#users" type="button" role="tab">
+                            <i class="fas fa-users-cog me-1"></i>Users & Assignments
+                        </button>
+                    </li>
+                </ul>
+                <div class="tab-content" id="managementTabsContent">
+                    <div class="tab-pane fade show active" id="locations" role="tabpanel">
+                        <div class="p-3">
+                            <h6 class="fw-bold">Add New Location</h6>
+                            <form id="addLocationForm">
+                                <div class="row">
+                                    <div class="col-md-6 mb-3">
+                                        <label class="form-label">Location Name</label>
+                                        <input type="text" class="form-control" id="locationName" required>
+                                    </div>
+                                    <div class="col-md-6 mb-3">
+                                        <label class="form-label">Address</label>
+                                        <input type="text" class="form-control" id="locationAddress" required>
+                                    </div>
+                                </div>
+                                <button type="submit" class="btn btn-success">
+                                    <i class="fas fa-plus me-1"></i>Add Location
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                    <div class="tab-pane fade" id="users" role="tabpanel">
+                        <div class="p-3">
+                            <h6 class="fw-bold">User Management</h6>
+                            <div id="userManagement">
+                                Loading users...
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+// Ensure modals work properly
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('DOM loaded, setting up modal handlers');
+    
+    // Force close on any close button click
+    document.addEventListener('click', function(e) {
+        if (e.target.matches('[data-bs-dismiss="modal"]') || e.target.closest('[data-bs-dismiss="modal"]')) {
+            console.log('Close button clicked');
+            const modal = e.target.closest('.modal');
+            if (modal) {
+                const modalInstance = bootstrap.Modal.getInstance(modal);
+                if (modalInstance) {
+                    modalInstance.hide();
+                } else {
+                    // Force hide if no instance
+                    modal.style.display = 'none';
+                    document.body.classList.remove('modal-open');
+                    const backdrop = document.querySelector('.modal-backdrop');
+                    if (backdrop) backdrop.remove();
+                }
+            }
+            e.preventDefault();
+            e.stopPropagation();
+        }
+    });
+    
+    // ESC key to close modal
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            const openModal = document.querySelector('.modal.show');
+            if (openModal) {
+                const modalInstance = bootstrap.Modal.getInstance(openModal);
+                if (modalInstance) {
+                    modalInstance.hide();
+                }
+            }
+        }
+    });
+});
+
+// Auto-submit form when filters change
+document.getElementById('date_filter').addEventListener('change', function() {
+    this.form.submit();
+});
+
+document.getElementById('location_filter').addEventListener('change', function() {
+    this.form.submit();
+});
+
+// Show patients modal for on-site clients
+function showPatientsModal(locationName, locationId) {
+    // Hide any existing modals first
+    const existingModals = document.querySelectorAll('.modal.show');
+    existingModals.forEach(modal => {
+        bootstrap.Modal.getInstance(modal)?.hide();
+    });
+    
+    const modalElement = document.getElementById('patientsModal');
+    const modal = new bootstrap.Modal(modalElement, {
+        backdrop: true,
+        keyboard: true,
+        focus: true
+    });
+    
+    document.getElementById('patientsModalLabel').innerHTML = 
+        `<i class="fas fa-users me-2"></i>Clients Currently On Site - ${locationName}`;
+    
+    const modalBody = document.getElementById('patientsModalBody');
+    modalBody.innerHTML = `
+        <div class="text-center">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+        </div>
+    `;
+    
+    modal.show();
+    
+    // Get patients for this location
+    const patientsOnSite = {{ currently_on_site|tojson }};
+    const locationPatients = patientsOnSite.filter(p => p.location_id === locationId);
+    
+    if (locationPatients.length === 0) {
+        modalBody.innerHTML = `
+            <div class="text-center py-4">
+                <i class="fas fa-user-clock fa-3x text-muted mb-3"></i>
+                <p class="text-muted mb-0">No clients currently on site at this facility.</p>
+            </div>
+        `;
+    } else {
+        let html = '<div class="row">';
+        locationPatients.forEach(patient => {
+            html += `
+                <div class="col-md-6 mb-3">
+                    <div class="card border-success">
+                        <div class="card-body">
+                            <div class="d-flex align-items-center">
+                                <div class="me-3">
+                                    <i class="fas fa-user-check text-success fa-2x"></i>
+                                </div>
+                                <div>
+                                    <h6 class="mb-1 fw-bold">${patient.patient_name}</h6>
+                                    <small class="text-muted d-block">
+                                        <i class="fas fa-clock me-1"></i>Since ${patient.ts_utc.substring(0, 16)}
+                                    </small>
+                                    <small class="text-info d-block">
+                                        <i class="fas fa-user-nurse me-1"></i>${patient.primary_carer}
+                                    </small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+        html += '</div>';
+        modalBody.innerHTML = html;
+    }
+}
+
+// Show all patients modal for registered clients
+function showAllPatientsModal(locationName, locationId) {
+    // Hide any existing modals first
+    const existingModals = document.querySelectorAll('.modal.show');
+    existingModals.forEach(modal => {
+        bootstrap.Modal.getInstance(modal)?.hide();
+    });
+    
+    const modalElement = document.getElementById('allPatientsModal');
+    const modal = new bootstrap.Modal(modalElement, {
+        backdrop: true,
+        keyboard: true,
+        focus: true
+    });
+    
+    document.getElementById('allPatientsModalLabel').innerHTML = 
+        `<i class="fas fa-list me-2"></i>All Registered Clients - ${locationName}`;
+    
+    const modalBody = document.getElementById('allPatientsModalBody');
+    modalBody.innerHTML = `
+        <div class="text-center">
+            <div class="spinner-border text-info" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+        </div>
+    `;
+    
+    modal.show();
+    
+    // Fetch all patients for this location
+    fetch(`/api/location/${locationId}/patients`)
+        .then(response => response.json())
+        .then(patients => {
+            if (patients.length === 0) {
+                modalBody.innerHTML = `
+                    <div class="text-center py-4">
+                        <i class="fas fa-users fa-3x text-muted mb-3"></i>
+                        <p class="text-muted mb-0">No clients registered at this facility.</p>
+                    </div>
+                `;
+            } else {
+                let html = '<div class="row">';
+                patients.forEach(patient => {
+                    const isOnSite = patientsOnSite.some(p => p.patient_id === patient.id);
+                    html += `
+                        <div class="col-md-6 mb-3">
+                            <div class="card ${isOnSite ? 'border-success' : 'border-secondary'}">
+                                <div class="card-body">
+                                    <div class="d-flex align-items-center">
+                                        <div class="me-3">
+                                            <i class="fas fa-user${isOnSite ? '-check text-success' : ' text-secondary'} fa-2x"></i>
+                                        </div>
+                                        <div>
+                                            <h6 class="mb-1 fw-bold">${patient.name}</h6>
+                                            <small class="text-info d-block">
+                                                <i class="fas fa-user-nurse me-1"></i>${patient.primary_carer_username}
+                                            </small>
+                                            <small class="d-block ${isOnSite ? 'text-success' : 'text-muted'}">
+                                                ${isOnSite ? '✓ Currently On Site' : '○ Not On Site'}
+                                            </small>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                });
+                html += '</div>';
+                modalBody.innerHTML = html;
+            }
+        })
+        .catch(error => {
+            modalBody.innerHTML = `
+                <div class="text-center py-4">
+                    <i class="fas fa-exclamation-triangle fa-3x text-warning mb-3"></i>
+                    <p class="text-muted mb-0">Error loading client data.</p>
+                </div>
+            `;
+        });
+}
+
+// Load user management data
+function loadUserManagement() {
+    fetch('/api/users')
+        .then(response => response.json())
+        .then(data => {
+            const container = document.getElementById('userManagement');
+            let html = '<div class="table-responsive"><table class="table table-hover"><thead><tr><th>Username</th><th>Role</th><th>Current Location</th><th>Actions</th></tr></thead><tbody>';
+            
+            data.users.forEach(user => {
+                if (user.role !== 'admin') {
+                    html += `
+                        <tr>
+                            <td class="fw-semibold">${user.username}</td>
+                            <td><span class="badge bg-info">${user.role}</span></td>
+                            <td>${user.location_name || 'Not assigned'}</td>
+                            <td>
+                                <select class="form-select form-select-sm" onchange="updateUserLocation(${user.id}, this.value)">
+                                    <option value="">Select location...</option>
+                                    ${data.locations.map(loc => 
+                                        `<option value="${loc.id}" ${loc.id === user.location_id ? 'selected' : ''}>${loc.name}</option>`
+                                    ).join('')}
+                                </select>
+                            </td>
+                        </tr>
+                    `;
+                }
+            });
+            
+            html += '</tbody></table></div>';
+            container.innerHTML = html;
+        });
+}
+
+// Update user location
+function updateUserLocation(userId, locationId) {
+    if (!locationId) return;
+    
+    fetch('/api/user/update-location', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            user_id: userId,
+            location_id: locationId
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('User location updated successfully');
+            loadUserManagement(); // Reload the data
+        } else {
+            alert('Error updating user location');
+        }
+    });
+}
+
+// Add location form handler
+document.getElementById('addLocationForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    const name = document.getElementById('locationName').value;
+    const address = document.getElementById('locationAddress').value;
+    
+    fetch('/api/location/add', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            name: name,
+            address: address
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('Location added successfully');
+            location.reload(); // Reload the page to show new location
+        } else {
+            alert('Error adding location');
+        }
+    });
+});
+
+// Load management data when tab is shown
+document.getElementById('users-tab').addEventListener('shown.bs.tab', function () {
+    loadUserManagement();
+});
+
+// Daily Activity Chart
+{% if daily_stats %}
+const ctx = document.getElementById('activityChart').getContext('2d');
+const dailyData = {{ daily_stats|tojson }};
+
+// Reverse data to show oldest to newest
+dailyData.reverse();
+
+const chart = new Chart(ctx, {
+    type: 'line',
+    data: {
+        labels: dailyData.map(d => d.date),
+        datasets: [
+            {
+                label: 'Arrivals',
+                data: dailyData.map(d => d.arrivals),
+                borderColor: 'rgb(25, 135, 84)',
+                backgroundColor: 'rgba(25, 135, 84, 0.1)',
+                tension: 0.3,
+                fill: true,
+                pointBackgroundColor: 'rgb(25, 135, 84)',
+                pointBorderColor: '#fff',
+                pointBorderWidth: 2
+            },
+            {
+                label: 'Departures',
+                data: dailyData.map(d => d.departures),
+                borderColor: 'rgb(255, 193, 7)',
+                backgroundColor: 'rgba(255, 193, 7, 0.1)',
+                tension: 0.3,
+                fill: true,
+                pointBackgroundColor: 'rgb(255, 193, 7)',
+                pointBorderColor: '#fff',
+                pointBorderWidth: 2
+            }
+        ]
+    },
+    options: {
+        responsive: true,
+        interaction: {
+            intersect: false,
+            mode: 'index',
+        },
+        plugins: {
+            title: {
+                display: false
+            },
+            legend: {
+                position: 'top',
+                labels: {
+                    usePointStyle: true,
+                    padding: 20
+                }
+            }
+        },
+        scales: {
+            x: {
+                grid: {
+                    display: false
+                }
+            },
+            y: {
+                beginAtZero: true,
+                ticks: {
+                    stepSize: 1
+                },
+                grid: {
+                    color: 'rgba(0,0,0,0.05)'
+                }
+            }
+        },
+        elements: {
+            line: {
+                borderWidth: 3
+            },
+            point: {
+                radius: 5,
+                hoverRadius: 8
+            }
+        }
+    }
+});
+{% endif %}
+</script>
+{% endblock %}

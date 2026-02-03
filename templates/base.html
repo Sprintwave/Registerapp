@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Care Register{% endblock %}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --success-gradient: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            --warning-gradient: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+            --card-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+            --card-shadow-hover: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+            --border-radius: 0.75rem;
+        }
+        
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            min-height: 100vh;
+            color: #374151;
+        }
+        
+        .navbar {
+            background: var(--primary-gradient) !important;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            border: none;
+        }
+        
+        .navbar-brand {
+            font-weight: 600;
+            font-size: 1.5rem;
+        }
+        
+        .card {
+            border: none;
+            border-radius: var(--border-radius);
+            box-shadow: var(--card-shadow);
+            transition: all 0.3s ease;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+        }
+        
+        .card:hover {
+            box-shadow: var(--card-shadow-hover);
+            transform: translateY(-2px);
+        }
+        
+        .card-header {
+            border-bottom: 1px solid rgba(0,0,0,0.1);
+            border-radius: var(--border-radius) var(--border-radius) 0 0 !important;
+            background: rgba(255, 255, 255, 0.8) !important;
+            backdrop-filter: blur(5px);
+        }
+        
+        .bg-gradient-primary {
+            background: var(--primary-gradient) !important;
+        }
+        
+        .bg-gradient-success {
+            background: var(--success-gradient) !important;
+        }
+        
+        .bg-gradient-warning {
+            background: var(--warning-gradient) !important;
+        }
+        
+        .btn {
+            border-radius: 0.5rem;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            border: none;
+        }
+        
+        .btn-primary {
+            background: var(--primary-gradient);
+            box-shadow: 0 4px 6px rgba(102, 126, 234, 0.25);
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 6px 12px rgba(102, 126, 234, 0.4);
+        }
+        
+        .btn-success {
+            background: var(--success-gradient);
+            box-shadow: 0 4px 6px rgba(79, 172, 254, 0.25);
+        }
+        
+        .btn-success:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 6px 12px rgba(79, 172, 254, 0.4);
+        }
+        
+        .btn-warning {
+            background: var(--warning-gradient);
+            box-shadow: 0 4px 6px rgba(250, 112, 154, 0.25);
+        }
+        
+        .btn-warning:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 6px 12px rgba(250, 112, 154, 0.4);
+        }
+        
+        .form-control, .form-select {
+            border: 2px solid #e5e7eb;
+            border-radius: 0.5rem;
+            transition: all 0.3s ease;
+            background: rgba(255, 255, 255, 0.9);
+        }
+        
+        .form-control:focus, .form-select:focus {
+            border-color: #667eea;
+            box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.25);
+            background: white;
+        }
+        
+        .touch-friendly {
+            min-height: 60px;
+            font-size: 1.2rem;
+            border-radius: 0.75rem;
+        }
+        
+        .form-control-lg {
+            font-size: 1.25rem;
+            padding: 0.75rem 1rem;
+            border-radius: 0.75rem;
+        }
+        
+        .event-list {
+            font-size: 0.9rem;
+        }
+        
+        .progress {
+            height: 10px;
+            border-radius: 10px;
+            background-color: rgba(0,0,0,0.1);
+        }
+        
+        .progress-bar {
+            border-radius: 10px;
+        }
+        
+        .badge {
+            font-size: 0.8rem;
+            padding: 0.5rem 0.75rem;
+            border-radius: 0.5rem;
+        }
+        
+        .table {
+            background: white;
+        }
+        
+        .table-hover tbody tr:hover {
+            background-color: rgba(102, 126, 234, 0.05);
+        }
+        
+        .text-gray-800 {
+            color: #1f2937 !important;
+        }
+        
+        .shadow-sm {
+            box-shadow: var(--card-shadow) !important;
+        }
+        
+        .modal-content {
+            border-radius: var(--border-radius);
+            border: none;
+            position: relative;
+            z-index: 1055;
+        }
+        
+        .modal-header {
+            border-bottom: 1px solid rgba(0,0,0,0.1);
+            border-radius: var(--border-radius) var(--border-radius) 0 0;
+        }
+        
+        .modal.fade .modal-dialog {
+            transition: transform 0.3s ease-out;
+        }
+        
+        .modal-backdrop {
+            z-index: 1050;
+        }
+        
+        .btn-close {
+            position: relative;
+            z-index: 1060;
+            opacity: 1;
+        }
+        
+        .btn-close:hover {
+            opacity: 0.8;
+        }
+        
+        .alert {
+            border: none;
+            border-radius: 0.75rem;
+            box-shadow: var(--card-shadow);
+        }
+        
+        @media (max-width: 576px) {
+            .container, .container-fluid {
+                padding: 0.5rem;
+            }
+            .btn {
+                min-height: 50px;
+                font-size: 1.1rem;
+            }
+            .card {
+                margin-bottom: 1rem;
+            }
+        }
+        
+        /* Custom animations */
+        @keyframes slideInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        .card {
+            animation: slideInUp 0.5s ease-out;
+        }
+        
+        /* Loading spinner enhancement */
+        .spinner-border {
+            width: 3rem;
+            height: 3rem;
+            border-width: 0.3em;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand d-flex align-items-center" href="/">
+                <i class="fas fa-heart-pulse me-2"></i>
+                Care Register
+            </a>
+            {% if session.user_id %}
+            <div class="navbar-nav ms-auto d-flex align-items-center">
+                <div class="d-flex align-items-center me-3">
+                    <div class="me-2">
+                        <i class="fas fa-user-circle fa-lg"></i>
+                    </div>
+                    <div class="d-flex flex-column">
+                        <span class="navbar-text mb-0 fw-semibold">{{ session.username }}</span>
+                        <small class="text-light opacity-75">{{ session.role|title }}</small>
+                    </div>
+                </div>
+                <a class="btn btn-outline-light btn-sm" href="{{ url_for('logout') }}">
+                    <i class="fas fa-sign-out-alt me-1"></i>Logout
+                </a>
+            </div>
+            {% endif %}
+        </div>
+    </nav>
+
+    <div class="container-fluid mt-4 pb-5">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ 'danger' if category == 'error' else 'success' if category == 'success' else 'info' }} alert-dismissible fade show" role="alert">
+                        <div class="d-flex align-items-center">
+                            <i class="fas fa-{{ 'exclamation-triangle' if category == 'error' else 'check-circle' if category == 'success' else 'info-circle' }} me-2"></i>
+                            {{ message }}
+                        </div>
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        {% block content %}{% endblock %}
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

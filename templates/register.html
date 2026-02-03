@@ -1,0 +1,221 @@
+{% extends "base.html" %}
+
+{% block title %}Register Events - Care Register{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-12 col-lg-8">
+        <div class="mb-4">
+            <h1 class="h3 mb-0 text-gray-800">
+                <i class="fas fa-clipboard-list me-2"></i>Register Client Events
+            </h1>
+            {% if patients %}
+            <p class="text-muted mb-0">
+                <i class="fas fa-map-marker-alt me-1"></i>
+                <strong>{{ patients[0].location_name }}</strong>
+            </p>
+            {% endif %}
+        </div>
+        
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-header bg-gradient-primary text-white border-0">
+                <h4 class="mb-0 fw-bold">
+                    <i class="fas fa-plus-circle me-2"></i>New Event
+                </h4>
+                <small class="opacity-75">Record client arrival or departure</small>
+            </div>
+            <div class="card-body p-4">
+                <form method="POST" id="eventForm">
+                    <div class="mb-4">
+                        <label for="patient_id" class="form-label fw-semibold">
+                            <i class="fas fa-user me-1"></i>Select Client
+                        </label>
+                        <select class="form-select form-control-lg" id="patient_id" name="patient_id" required>
+                            <option value="">Choose a client...</option>
+                            {% for patient in patients %}
+                            <option value="{{ patient.id }}">{{ patient.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    
+                    <div class="mb-4">
+                        <label class="form-label fw-semibold mb-3">
+                            <i class="fas fa-exchange-alt me-1"></i>Event Type
+                        </label>
+                        <div class="d-grid gap-3 d-md-flex">
+                            <button type="button" class="btn btn-lg touch-friendly flex-fill" onclick="setEventType('ARRIVED')">
+                                <i class="fas fa-sign-in-alt me-2"></i>ARRIVED
+                            </button>
+                            <button type="button" class="btn btn-lg touch-friendly flex-fill" onclick="setEventType('LEFT')">
+                                <i class="fas fa-sign-out-alt me-2"></i>LEFT
+                            </button>
+                        </div>
+                        <input type="hidden" id="event_type" name="event_type" required>
+                    </div>
+                    
+                    <div id="leftFields" style="display: none;">
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="left_with" class="form-label fw-semibold">
+                                    <i class="fas fa-users me-1"></i>Left With
+                                </label>
+                                <select class="form-select form-control-lg" id="left_with" name="left_with">
+                                    <option value="">Select...</option>
+                                    <option value="family">👨‍👩‍👧‍👦 Family</option>
+                                    <option value="taxi">🚖 Taxi Driver</option>
+                                    <option value="staff">👩‍⚕️ Staff Member</option>
+                                    <option value="alone">🚶 Alone</option>
+                                    <option value="other">❓ Other</option>
+                                </select>
+                            </div>
+                            
+                            <div class="col-md-6 mb-3">
+                                <label for="transport_mode" class="form-label fw-semibold">
+                                    <i class="fas fa-car me-1"></i>Transport Mode
+                                </label>
+                                <select class="form-select form-control-lg" id="transport_mode" name="transport_mode">
+                                    <option value="">Select...</option>
+                                    <option value="walk">🚶 Walking</option>
+                                    <option value="car">🚗 Car</option>
+                                    <option value="taxi">🚖 Taxi</option>
+                                    <option value="bus">🚌 Bus</option>
+                                    <option value="other">🚙 Other</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-4">
+                        <label for="notes" class="form-label fw-semibold">
+                            <i class="fas fa-sticky-note me-1"></i>Notes <small class="text-muted">(Optional)</small>
+                        </label>
+                        <textarea class="form-control" id="notes" name="notes" rows="3" 
+                                  placeholder="Add any additional notes about this event..."></textarea>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary btn-lg w-100 touch-friendly" id="submitBtn" disabled>
+                        <i class="fas fa-save me-2"></i>Save Event
+                    </button>
+                </form>
+            </div>
+        </div>
+        
+        {% if recent_events %}
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white border-bottom">
+                <h5 class="mb-0 fw-bold text-gray-800">
+                    <i class="fas fa-history me-2 text-primary"></i>My Recent Events
+                </h5>
+                <small class="text-muted">Last 20 events you recorded</small>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle event-list">
+                        <thead class="table-light">
+                            <tr>
+                                <th class="fw-bold">
+                                    <i class="fas fa-clock me-1"></i>Time
+                                </th>
+                                <th class="fw-bold">
+                                    <i class="fas fa-user me-1"></i>Client
+                                </th>
+                                <th class="fw-bold">
+                                    <i class="fas fa-exchange-alt me-1"></i>Event
+                                </th>
+                                <th class="fw-bold">Details</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for event in recent_events %}
+                            <tr>
+                                <td>
+                                    <small class="text-muted">{{ event.ts_utc[:16] }}</small>
+                                </td>
+                                <td class="fw-semibold">{{ event.patient_name }}</td>
+                                <td>
+                                    <span class="badge bg-{{ 'success' if event.event_type == 'ARRIVED' else 'warning' }} px-3 py-2">
+                                        <i class="fas fa-{{ 'sign-in-alt' if event.event_type == 'ARRIVED' else 'sign-out-alt' }} me-1"></i>
+                                        {{ event.event_type }}
+                                    </span>
+                                </td>
+                                <td>
+                                    {% if event.left_with or event.transport_mode %}
+                                        <small class="text-muted">
+                                            {{ event.left_with or '' }}
+                                            {% if event.left_with and event.transport_mode %} • {% endif %}
+                                            {{ event.transport_mode or '' }}
+                                        </small>
+                                    {% endif %}
+                                    {% if event.notes %}
+                                        <div><small class="text-info">💬 {{ event.notes }}</small></div>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function setEventType(type) {
+    document.getElementById('event_type').value = type;
+    
+    // Update button styles
+    const arrivedBtn = document.querySelector('button[onclick="setEventType(\'ARRIVED\')"]');
+    const leftBtn = document.querySelector('button[onclick="setEventType(\'LEFT\')"]');
+    
+    // Reset all classes
+    arrivedBtn.className = 'btn btn-lg touch-friendly flex-fill';
+    leftBtn.className = 'btn btn-lg touch-friendly flex-fill';
+    
+    if (type === 'ARRIVED') {
+        arrivedBtn.classList.add('btn-success');
+        leftBtn.classList.add('btn-outline-warning');
+        document.getElementById('leftFields').style.display = 'none';
+    } else {
+        arrivedBtn.classList.add('btn-outline-success');
+        leftBtn.classList.add('btn-warning');
+        document.getElementById('leftFields').style.display = 'block';
+    }
+    
+    updateSubmitButton();
+}
+
+function updateSubmitButton() {
+    const patientSelected = document.getElementById('patient_id').value;
+    const eventTypeSelected = document.getElementById('event_type').value;
+    const submitBtn = document.getElementById('submitBtn');
+    
+    if (patientSelected && eventTypeSelected) {
+        submitBtn.disabled = false;
+        submitBtn.classList.remove('btn-secondary');
+        submitBtn.classList.add('btn-primary');
+    } else {
+        submitBtn.disabled = true;
+        submitBtn.classList.remove('btn-primary');
+        submitBtn.classList.add('btn-secondary');
+    }
+}
+
+// Event listeners
+document.getElementById('patient_id').addEventListener('change', updateSubmitButton);
+
+// Set initial button styles
+document.querySelector('button[onclick="setEventType(\'ARRIVED\')"]').classList.add('btn-outline-success');
+document.querySelector('button[onclick="setEventType(\'LEFT\')"]').classList.add('btn-outline-warning');
+
+// Form validation
+document.getElementById('eventForm').addEventListener('submit', function(e) {
+    const submitBtn = document.getElementById('submitBtn');
+    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Saving...';
+    submitBtn.disabled = true;
+});
+</script>
+{% endblock %}
