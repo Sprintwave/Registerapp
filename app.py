@@ -500,28 +500,99 @@ def debug_db():
     database_url = os.environ.get('DATABASE_URL')
     is_postgres = database_url is not None and PSYCOPG2_AVAILABLE
     
-    with get_db() as conn:
-        if is_postgres:
-            cursor = conn.cursor()
-            events_count = cursor.execute('SELECT COUNT(*) FROM events').fetchone()[0]
-            recent_events = cursor.execute('SELECT * FROM events ORDER BY ts_utc DESC LIMIT 10').fetchall()
-            users_count = cursor.execute('SELECT COUNT(*) FROM users').fetchone()[0]
-            patients_count = cursor.execute('SELECT COUNT(*) FROM patients').fetchone()[0]
-        else:
-            events_count = conn.execute('SELECT COUNT(*) FROM events').fetchone()[0]
-            recent_events = conn.execute('SELECT * FROM events ORDER BY ts_utc DESC LIMIT 10').fetchall()
-            users_count = conn.execute('SELECT COUNT(*) FROM users').fetchone()[0]
-            patients_count = conn.execute('SELECT COUNT(*) FROM patients').fetchone()[0]
-    
     debug_info = {
         'database_type': 'PostgreSQL' if is_postgres else 'SQLite',
-        'events_count': events_count,
-        'users_count': users_count, 
-        'patients_count': patients_count,
-        'recent_events': [dict(event) for event in recent_events]
+        'database_url_exists': database_url is not None,
+        'psycopg2_available': PSYCOPG2_AVAILABLE,
+        'environment_check': {
+            'DATABASE_URL': database_url[:50] + '...' if database_url else 'Not set',
+            'PORT': os.environ.get('PORT', 'Not set'),
+            'RENDER': os.environ.get('RENDER', 'Not set')
+        }
     }
     
+    try:
+        with get_db() as conn:
+            if is_postgres:
+                cursor = conn.cursor()
+                events_count = cursor.execute('SELECT COUNT(*) FROM events').fetchone()[0]
+                recent_events = cursor.execute('SELECT e.*, p.name as patient_name, u.username as carer_name FROM events e JOIN patients p ON e.patient_id = p.id JOIN users u ON e.user_id = u.id ORDER BY ts_utc DESC LIMIT 10').fetchall()
+                users_count = cursor.execute('SELECT COUNT(*) FROM users').fetchone()[0]
+                patients_count = cursor.execute('SELECT COUNT(*) FROM patients').fetchone()[0]
+                locations_count = cursor.execute('SELECT COUNT(*) FROM locations').fetchone()[0]
+            else:
+                events_count = conn.execute('SELECT COUNT(*) FROM events').fetchone()[0]
+                recent_events = conn.execute('SELECT e.*, p.name as patient_name, u.username as carer_name FROM events e JOIN patients p ON e.patient_id = p.id JOIN users u ON e.user_id = u.id ORDER BY ts_utc DESC LIMIT 10').fetchall()
+                users_count = conn.execute('SELECT COUNT(*) FROM users').fetchone()[0]
+                patients_count = conn.execute('SELECT COUNT(*) FROM patients').fetchone()[0]
+                locations_count = conn.execute('SELECT COUNT(*) FROM locations').fetchone()[0]
+        
+        debug_info.update({
+            'database_connection': 'SUCCESS',
+            'events_count': events_count,
+            'users_count': users_count, 
+            'patients_count': patients_count,
+            'locations_count': locations_count,
+            'recent_events': [dict(event) for event in recent_events]
+        })
+        
+    except Exception as e:
+        debug_info.update({
+            'database_connection': f'ERROR: {str(e)}',
+            'error_details': str(e)
+        })
+    
     return f"<pre>{debug_info}</pre>"
+
+@app.route('/debug/test-write')
+@require_admin
+def test_write():
+    """Test writing to database (admin only)"""
+    database_url = os.environ.get('DATABASE_URL')
+    is_postgres = database_url is not None and PSYCOPG2_AVAILABLE
+    
+    try:
+        with get_db() as conn:
+            if is_postgres:
+                cursor = conn.cursor()
+                # Get a test patient and admin user
+                patient = cursor.execute('SELECT id FROM patients LIMIT 1').fetchone()
+                admin_user = cursor.execute('SELECT id FROM users WHERE role = %s LIMIT 1', ('admin',)).fetchone()
+                
+                if patient and admin_user:
+                    # Insert a test event
+                    cursor.execute('''
+                        INSERT INTO events (patient_id, user_id, event_type, notes)
+                        VALUES (%s, %s, %s, %s)
+                    ''', (patient['id'], admin_user['id'], 'ARRIVED', 'DEBUG TEST EVENT'))
+                    conn.commit()
+                    
+                    # Check if it was inserted
+                    test_event = cursor.execute('SELECT * FROM events WHERE notes = %s', ('DEBUG TEST EVENT',)).fetchone()
+                    
+                    return f"<pre>PostgreSQL Write Test: SUCCESS\nTest event: {dict(test_event) if test_event else 'Not found'}</pre>"
+                else:
+                    return f"<pre>PostgreSQL Write Test: FAILED - No patient or admin user found</pre>"
+            else:
+                # SQLite version
+                patient = conn.execute('SELECT id FROM patients LIMIT 1').fetchone()
+                admin_user = conn.execute('SELECT id FROM users WHERE role = ? LIMIT 1', ('admin',)).fetchone()
+                
+                if patient and admin_user:
+                    conn.execute('''
+                        INSERT INTO events (patient_id, user_id, event_type, notes)
+                        VALUES (?, ?, ?, ?)
+                    ''', (patient['id'], admin_user['id'], 'ARRIVED', 'DEBUG TEST EVENT'))
+                    conn.commit()
+                    
+                    test_event = conn.execute('SELECT * FROM events WHERE notes = ?', ('DEBUG TEST EVENT',)).fetchone()
+                    
+                    return f"<pre>SQLite Write Test: SUCCESS\nTest event: {dict(test_event) if test_event else 'Not found'}</pre>"
+                else:
+                    return f"<pre>SQLite Write Test: FAILED - No patient or admin user found</pre>"
+                    
+    except Exception as e:
+        return f"<pre>Database Write Test: ERROR - {str(e)}</pre>"
 
 @app.route('/admin')
 @require_admin
