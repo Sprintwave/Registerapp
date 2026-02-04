@@ -434,11 +434,13 @@ def register():
                     INSERT INTO events (patient_id, user_id, event_type, left_with, transport_mode, notes)
                     VALUES (%s, %s, %s, %s, %s, %s)
                 ''', (patient_id, session['user_id'], event_type, left_with, transport_mode, notes))
+                print(f"DEBUG: Inserted PostgreSQL event - Patient: {patient_id}, User: {session['user_id']}, Type: {event_type}")
             else:
                 conn.execute('''
                     INSERT INTO events (patient_id, user_id, event_type, left_with, transport_mode, notes)
                     VALUES (?, ?, ?, ?, ?, ?)
                 ''', (patient_id, session['user_id'], event_type, left_with, transport_mode, notes))
+                print(f"DEBUG: Inserted SQLite event - Patient: {patient_id}, User: {session['user_id']}, Type: {event_type}")
             conn.commit()
         
         flash('Event recorded successfully', 'success')
@@ -490,6 +492,36 @@ def register():
             ''', (session['user_id'],)).fetchall()
     
     return render_template('register.html', patients=patients, recent_events=recent_events)
+
+@app.route('/debug/db')
+@require_admin
+def debug_db():
+    """Debug endpoint to show database contents (admin only)"""
+    database_url = os.environ.get('DATABASE_URL')
+    is_postgres = database_url is not None and PSYCOPG2_AVAILABLE
+    
+    with get_db() as conn:
+        if is_postgres:
+            cursor = conn.cursor()
+            events_count = cursor.execute('SELECT COUNT(*) FROM events').fetchone()[0]
+            recent_events = cursor.execute('SELECT * FROM events ORDER BY ts_utc DESC LIMIT 10').fetchall()
+            users_count = cursor.execute('SELECT COUNT(*) FROM users').fetchone()[0]
+            patients_count = cursor.execute('SELECT COUNT(*) FROM patients').fetchone()[0]
+        else:
+            events_count = conn.execute('SELECT COUNT(*) FROM events').fetchone()[0]
+            recent_events = conn.execute('SELECT * FROM events ORDER BY ts_utc DESC LIMIT 10').fetchall()
+            users_count = conn.execute('SELECT COUNT(*) FROM users').fetchone()[0]
+            patients_count = conn.execute('SELECT COUNT(*) FROM patients').fetchone()[0]
+    
+    debug_info = {
+        'database_type': 'PostgreSQL' if is_postgres else 'SQLite',
+        'events_count': events_count,
+        'users_count': users_count, 
+        'patients_count': patients_count,
+        'recent_events': [dict(event) for event in recent_events]
+    }
+    
+    return f"<pre>{debug_info}</pre>"
 
 @app.route('/admin')
 @require_admin
@@ -631,8 +663,10 @@ def admin():
         
         if is_postgres:
             recent_events = cursor.execute(query, params).fetchall()
+            print(f"DEBUG: PostgreSQL admin query found {len(recent_events)} recent events")
         else:
             recent_events = conn.execute(query, params).fetchall()
+            print(f"DEBUG: SQLite admin query found {len(recent_events)} recent events")
         
         # Get daily activity stats for chart
         daily_stats_query = '''

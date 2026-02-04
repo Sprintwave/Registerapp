@@ -760,5 +760,60 @@ const chart = new Chart(ctx, {
     }
 });
 {% endif %}
+
+// Auto-refresh functionality for real-time updates
+let autoRefreshEnabled = true;
+let refreshInterval;
+
+function toggleAutoRefresh() {
+    const button = document.getElementById('autoRefreshBtn');
+    const icon = button.querySelector('i');
+    
+    if (autoRefreshEnabled) {
+        // Disable auto-refresh
+        clearInterval(refreshInterval);
+        autoRefreshEnabled = false;
+        button.classList.remove('btn-success');
+        button.classList.add('btn-secondary');
+        icon.classList.remove('fa-play');
+        icon.classList.add('fa-pause');
+        button.setAttribute('title', 'Auto-refresh disabled - Click to enable');
+    } else {
+        // Enable auto-refresh
+        startAutoRefresh();
+        autoRefreshEnabled = true;
+        button.classList.remove('btn-secondary');
+        button.classList.add('btn-success');
+        icon.classList.remove('fa-pause');
+        icon.classList.add('fa-play');
+        button.setAttribute('title', 'Auto-refresh enabled - Updates every 30 seconds');
+    }
+}
+
+function startAutoRefresh() {
+    refreshInterval = setInterval(() => {
+        // Only refresh if the page is visible (not in another tab)
+        if (!document.hidden) {
+            const currentUrl = new URL(window.location);
+            // Add a timestamp to prevent caching
+            currentUrl.searchParams.set('_t', Date.now());
+            window.location.reload();
+        }
+    }, 30000); // Refresh every 30 seconds
+}
+
+// Start auto-refresh when page loads
+document.addEventListener('DOMContentLoaded', function() {
+    startAutoRefresh();
+});
+
+// Stop refresh when page is hidden, resume when visible
+document.addEventListener('visibilitychange', function() {
+    if (document.hidden) {
+        clearInterval(refreshInterval);
+    } else if (autoRefreshEnabled) {
+        startAutoRefresh();
+    }
+});
 </script>
 {% endblock %}
