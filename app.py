@@ -83,81 +83,148 @@ def init_db():
         
         # Check if users table needs migration
         try:
-            conn.execute('SELECT location_id FROM users LIMIT 1')
+            if is_postgres:
+                cursor.execute('SELECT location_id FROM users LIMIT 1')
+            else:
+                conn.execute('SELECT location_id FROM users LIMIT 1')
             users_migrated = True
-        except sqlite3.OperationalError:
+        except (sqlite3.OperationalError, Exception):
             users_migrated = False
         
         if not users_migrated:
             # Create new users table with location support
-            conn.execute('ALTER TABLE users ADD COLUMN location_id INTEGER')
+            if is_postgres:
+                cursor.execute('ALTER TABLE users ADD COLUMN location_id INTEGER')
+            else:
+                conn.execute('ALTER TABLE users ADD COLUMN location_id INTEGER')
             
         # Create users table if it doesn't exist (fallback)
-        conn.execute('''
-            CREATE TABLE IF NOT EXISTS users (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                username TEXT UNIQUE NOT NULL,
-                password_hash TEXT NOT NULL,
-                role TEXT NOT NULL CHECK (role IN ('admin', 'carer')),
-                location_id INTEGER,
-                FOREIGN KEY (location_id) REFERENCES locations (id)
-            )
-        ''')
+        if is_postgres:
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS users (
+                    id SERIAL PRIMARY KEY,
+                    username TEXT UNIQUE NOT NULL,
+                    password_hash TEXT NOT NULL,
+                    role TEXT NOT NULL CHECK (role IN ('admin', 'carer')),
+                    location_id INTEGER,
+                    FOREIGN KEY (location_id) REFERENCES locations (id)
+                )
+            ''')
+        else:
+            conn.execute('''
+                CREATE TABLE IF NOT EXISTS users (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    username TEXT UNIQUE NOT NULL,
+                    password_hash TEXT NOT NULL,
+                    role TEXT NOT NULL CHECK (role IN ('admin', 'carer')),
+                    location_id INTEGER,
+                    FOREIGN KEY (location_id) REFERENCES locations (id)
+                )
+            ''')
         
         # Check if patients table needs migration
         try:
-            conn.execute('SELECT location_id FROM patients LIMIT 1')
+            if is_postgres:
+                cursor.execute('SELECT location_id FROM patients LIMIT 1')
+            else:
+                conn.execute('SELECT location_id FROM patients LIMIT 1')
             patients_migrated = True
-        except sqlite3.OperationalError:
+        except (sqlite3.OperationalError, Exception):
             patients_migrated = False
         
         if not patients_migrated:
             # Create new patients table with location and carer support
-            conn.execute('ALTER TABLE patients ADD COLUMN location_id INTEGER')
-            conn.execute('ALTER TABLE patients ADD COLUMN primary_carer_id INTEGER')
+            if is_postgres:
+                cursor.execute('ALTER TABLE patients ADD COLUMN location_id INTEGER')
+                cursor.execute('ALTER TABLE patients ADD COLUMN primary_carer_id INTEGER')
+            else:
+                conn.execute('ALTER TABLE patients ADD COLUMN location_id INTEGER')
+                conn.execute('ALTER TABLE patients ADD COLUMN primary_carer_id INTEGER')
             
             # Update existing patients with location assignments
-            existing_patients = conn.execute('SELECT id, name FROM patients').fetchall()
+            if is_postgres:
+                existing_patients = cursor.execute('SELECT id, name FROM patients').fetchall()
+            else:
+                existing_patients = conn.execute('SELECT id, name FROM patients').fetchall()
             if existing_patients:
                 # Assign first 3 patients to location 1, rest evenly distributed
                 for i, patient in enumerate(existing_patients):
                     location_id = (i % 5) + 1  # Distribute across 5 locations
-                    conn.execute('UPDATE patients SET location_id = ? WHERE id = ?', 
-                               (location_id, patient['id']))
+                    if is_postgres:
+                        cursor.execute('UPDATE patients SET location_id = %s WHERE id = %s', 
+                                     (location_id, patient['id']))
+                    else:
+                        conn.execute('UPDATE patients SET location_id = ? WHERE id = ?', 
+                                   (location_id, patient['id']))
         
         # Create patients table if it doesn't exist (fallback)
-        conn.execute('''
-            CREATE TABLE IF NOT EXISTS patients (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL,
-                location_id INTEGER,
-                primary_carer_id INTEGER,
-                FOREIGN KEY (location_id) REFERENCES locations (id),
-                FOREIGN KEY (primary_carer_id) REFERENCES users (id)
-            )
-        ''')
+        if is_postgres:
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS patients (
+                    id SERIAL PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    location_id INTEGER,
+                    primary_carer_id INTEGER,
+                    FOREIGN KEY (location_id) REFERENCES locations (id),
+                    FOREIGN KEY (primary_carer_id) REFERENCES users (id)
+                )
+            ''')
+        else:
+            conn.execute('''
+                CREATE TABLE IF NOT EXISTS patients (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL,
+                    location_id INTEGER,
+                    primary_carer_id INTEGER,
+                    FOREIGN KEY (location_id) REFERENCES locations (id),
+                    FOREIGN KEY (primary_carer_id) REFERENCES users (id)
+                )
+            ''')
         
         # Create events table
-        conn.execute('''
-            CREATE TABLE IF NOT EXISTS events (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                patient_id INTEGER NOT NULL,
-                user_id INTEGER NOT NULL,
-                event_type TEXT NOT NULL CHECK (event_type IN ('ARRIVED', 'LEFT')),
-                left_with TEXT,
-                transport_mode TEXT,
-                notes TEXT,
-                ts_utc TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (patient_id) REFERENCES patients (id),
-                FOREIGN KEY (user_id) REFERENCES users (id)
-            )
-        ''')
+        if is_postgres:
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS events (
+                    id SERIAL PRIMARY KEY,
+                    patient_id INTEGER NOT NULL,
+                    user_id INTEGER NOT NULL,
+                    event_type TEXT NOT NULL CHECK (event_type IN ('ARRIVED', 'LEFT')),
+                    left_with TEXT,
+                    transport_mode TEXT,
+                    notes TEXT,
+                    ts_utc TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (patient_id) REFERENCES patients (id),
+                    FOREIGN KEY (user_id) REFERENCES users (id)
+                )
+            ''')
+        else:
+            conn.execute('''
+                CREATE TABLE IF NOT EXISTS events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    patient_id INTEGER NOT NULL,
+                    user_id INTEGER NOT NULL,
+                    event_type TEXT NOT NULL CHECK (event_type IN ('ARRIVED', 'LEFT')),
+                    left_with TEXT,
+                    transport_mode TEXT,
+                    notes TEXT,
+                    ts_utc TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (patient_id) REFERENCES patients (id),
+                    FOREIGN KEY (user_id) REFERENCES users (id)
+                )
+            ''')
         
         # Seed admin user if not exists
-        admin_exists = conn.execute('SELECT id FROM users WHERE username = ?', ('admin',)).fetchone()
-        if not admin_exists:
-            admin_hash = generate_password_hash('admin123')
-            conn.execute('INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)',
+        if is_postgres:
+            admin_exists = cursor.execute('SELECT id FROM users WHERE username = %s', ('admin',)).fetchone()
+            if not admin_exists:
+                admin_hash = generate_password_hash('admin123')
+                cursor.execute('INSERT INTO users (username, password_hash, role) VALUES (%s, %s, %s)',
+                        ('admin', admin_hash, 'admin'))
+        else:
+            admin_exists = conn.execute('SELECT id FROM users WHERE username = ?', ('admin',)).fetchone()
+            if not admin_exists:
+                admin_hash = generate_password_hash('admin123')
+                conn.execute('INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)',
                         ('admin', admin_hash, 'admin'))
         
         # Seed carer users if not exist
@@ -166,23 +233,42 @@ def init_db():
         ]
         
         for i, username in enumerate(new_carers):
-            carer_exists = conn.execute('SELECT id FROM users WHERE username = ?', (username,)).fetchone()
-            if not carer_exists:
-                password_hash = generate_password_hash('carer123')
-                location_id = i + 1
-                conn.execute('INSERT INTO users (username, password_hash, role, location_id) VALUES (?, ?, ?, ?)',
-                           (username, password_hash, 'carer', location_id))
+            if is_postgres:
+                carer_exists = cursor.execute('SELECT id FROM users WHERE username = %s', (username,)).fetchone()
+                if not carer_exists:
+                    password_hash = generate_password_hash('carer123')
+                    location_id = i + 1
+                    cursor.execute('INSERT INTO users (username, password_hash, role, location_id) VALUES (%s, %s, %s, %s)',
+                               (username, password_hash, 'carer', location_id))
+            else:
+                carer_exists = conn.execute('SELECT id FROM users WHERE username = ?', (username,)).fetchone()
+                if not carer_exists:
+                    password_hash = generate_password_hash('carer123')
+                    location_id = i + 1
+                    conn.execute('INSERT INTO users (username, password_hash, role, location_id) VALUES (?, ?, ?, ?)',
+                               (username, password_hash, 'carer', location_id))
         
         # Update existing carer1 if exists
-        existing_carer = conn.execute('SELECT id FROM users WHERE username = ? AND location_id IS NULL', ('carer1',)).fetchone()
-        if existing_carer:
-            conn.execute('UPDATE users SET location_id = 1 WHERE username = ?', ('carer1',))
+        if is_postgres:
+            existing_carer = cursor.execute('SELECT id FROM users WHERE username = %s AND location_id IS NULL', ('carer1',)).fetchone()
+            if existing_carer:
+                cursor.execute('UPDATE users SET location_id = 1 WHERE username = %s', ('carer1',))
+        else:
+            existing_carer = conn.execute('SELECT id FROM users WHERE username = ? AND location_id IS NULL', ('carer1',)).fetchone()
+            if existing_carer:
+                conn.execute('UPDATE users SET location_id = 1 WHERE username = ?', ('carer1',))
         
         # Seed more patients if we have fewer than 30
-        current_patient_count = conn.execute('SELECT COUNT(*) FROM patients').fetchone()[0]
+        if is_postgres:
+            current_patient_count = cursor.execute('SELECT COUNT(*) FROM patients').fetchone()[0]
+        else:
+            current_patient_count = conn.execute('SELECT COUNT(*) FROM patients').fetchone()[0]
         if current_patient_count < 30:
             # Get carer IDs for assignment
-            carers = conn.execute('SELECT id, location_id FROM users WHERE role = "carer" AND location_id IS NOT NULL ORDER BY location_id').fetchall()
+            if is_postgres:
+                carers = cursor.execute('SELECT id, location_id FROM users WHERE role = %s AND location_id IS NOT NULL ORDER BY location_id', ('carer',)).fetchall()
+            else:
+                carers = conn.execute('SELECT id, location_id FROM users WHERE role = "carer" AND location_id IS NOT NULL ORDER BY location_id').fetchall()
             
             if carers:
                 additional_patients = [
@@ -203,20 +289,34 @@ def init_db():
                     carer = next((c for c in carers if c['location_id'] == location_id), None)
                     if carer:
                         # Check if patient already exists
-                        existing = conn.execute('SELECT id FROM patients WHERE name = ?', (name,)).fetchone()
-                        if not existing:
-                            conn.execute('INSERT INTO patients (name, location_id, primary_carer_id) VALUES (?, ?, ?)',
-                                       (name, location_id, carer['id']))
+                        if is_postgres:
+                            existing = cursor.execute('SELECT id FROM patients WHERE name = %s', (name,)).fetchone()
+                            if not existing:
+                                cursor.execute('INSERT INTO patients (name, location_id, primary_carer_id) VALUES (%s, %s, %s)',
+                                           (name, location_id, carer['id']))
+                        else:
+                            existing = conn.execute('SELECT id FROM patients WHERE name = ?', (name,)).fetchone()
+                            if not existing:
+                                conn.execute('INSERT INTO patients (name, location_id, primary_carer_id) VALUES (?, ?, ?)',
+                                           (name, location_id, carer['id']))
         
         # Update existing patients without location assignments
-        unassigned_patients = conn.execute('SELECT id FROM patients WHERE location_id IS NULL').fetchall()
-        carers = conn.execute('SELECT id, location_id FROM users WHERE role = "carer" AND location_id IS NOT NULL ORDER BY location_id').fetchall()
+        if is_postgres:
+            unassigned_patients = cursor.execute('SELECT id FROM patients WHERE location_id IS NULL').fetchall()
+            carers = cursor.execute('SELECT id, location_id FROM users WHERE role = %s AND location_id IS NOT NULL ORDER BY location_id', ('carer',)).fetchall()
+        else:
+            unassigned_patients = conn.execute('SELECT id FROM patients WHERE location_id IS NULL').fetchall()
+            carers = conn.execute('SELECT id, location_id FROM users WHERE role = "carer" AND location_id IS NOT NULL ORDER BY location_id').fetchall()
         
         for i, patient in enumerate(unassigned_patients):
             if carers:
                 carer = carers[i % len(carers)]
-                conn.execute('UPDATE patients SET location_id = ?, primary_carer_id = ? WHERE id = ?',
-                           (carer['location_id'], carer['id'], patient['id']))
+                if is_postgres:
+                    cursor.execute('UPDATE patients SET location_id = %s, primary_carer_id = %s WHERE id = %s',
+                               (carer['location_id'], carer['id'], patient['id']))
+                else:
+                    conn.execute('UPDATE patients SET location_id = ?, primary_carer_id = ? WHERE id = ?',
+                               (carer['location_id'], carer['id'], patient['id']))
         
         conn.commit()
 
@@ -606,8 +706,15 @@ def update_user_location():
     if not user_id or not location_id:
         return jsonify({'success': False, 'error': 'Missing parameters'})
     
+    database_url = os.environ.get('DATABASE_URL')
+    is_postgres = database_url is not None
+    
     with get_db() as conn:
-        conn.execute('UPDATE users SET location_id = ? WHERE id = ?', (location_id, user_id))
+        if is_postgres:
+            cursor = conn.cursor()
+            cursor.execute('UPDATE users SET location_id = %s WHERE id = %s', (location_id, user_id))
+        else:
+            conn.execute('UPDATE users SET location_id = ? WHERE id = ?', (location_id, user_id))
         conn.commit()
     
     return jsonify({'success': True})
@@ -623,8 +730,15 @@ def add_location():
     if not name or not address:
         return jsonify({'success': False, 'error': 'Missing parameters'})
     
+    database_url = os.environ.get('DATABASE_URL')
+    is_postgres = database_url is not None
+    
     with get_db() as conn:
-        conn.execute('INSERT INTO locations (name, address) VALUES (?, ?)', (name, address))
+        if is_postgres:
+            cursor = conn.cursor()
+            cursor.execute('INSERT INTO locations (name, address) VALUES (%s, %s)', (name, address))
+        else:
+            conn.execute('INSERT INTO locations (name, address) VALUES (?, ?)', (name, address))
         conn.commit()
     
     return jsonify({'success': True})
