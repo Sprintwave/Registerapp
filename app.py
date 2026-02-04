@@ -6,6 +6,16 @@ from werkzeug.security import generate_password_hash, check_password_hash
 import csv
 from io import StringIO
 
+# Try to import psycopg2 at module level
+try:
+    import psycopg2
+    from psycopg2.extras import RealDictCursor
+    import urllib.parse
+    PSYCOPG2_AVAILABLE = True
+except ImportError as e:
+    print(f"Warning: psycopg2 not available: {e}")
+    PSYCOPG2_AVAILABLE = False
+
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'your-secret-key-change-in-production')
 
@@ -15,37 +25,38 @@ def get_db():
     """Get database connection - supports both SQLite (local) and PostgreSQL (Render)"""
     database_url = os.environ.get('DATABASE_URL')
     
-    if database_url:
+    if database_url and PSYCOPG2_AVAILABLE:
         # Production: PostgreSQL on Render
-        import psycopg2
-        from psycopg2.extras import RealDictCursor
-        import urllib.parse
-        
-        # Parse the URL
-        url_parts = urllib.parse.urlparse(database_url)
-        conn = psycopg2.connect(
-            host=url_parts.hostname,
-            port=url_parts.port,
-            database=url_parts.path[1:],
-            user=url_parts.username,
-            password=url_parts.password,
-            sslmode='require',
-            cursor_factory=RealDictCursor
-        )
-        return conn
-    else:
-        # Development: SQLite
-        conn = sqlite3.connect(DATABASE)
-        conn.row_factory = sqlite3.Row
-        return conn
+        try:
+            # Parse the URL
+            url_parts = urllib.parse.urlparse(database_url)
+            conn = psycopg2.connect(
+                host=url_parts.hostname,
+                port=url_parts.port,
+                database=url_parts.path[1:],
+                user=url_parts.username,
+                password=url_parts.password,
+                sslmode='require',
+                cursor_factory=RealDictCursor
+            )
+            return conn
+        except Exception as e:
+            print(f"PostgreSQL connection failed: {e}")
+            # Fall back to SQLite
+            pass
+    
+    # Development: SQLite (or fallback)
+    conn = sqlite3.connect(DATABASE)
+    conn.row_factory = sqlite3.Row
+    return conn
 
 def init_db():
     """Initialize database and create tables"""
     database_url = os.environ.get('DATABASE_URL')
-    is_postgres = database_url is not None
+    is_postgres = database_url is not None and PSYCOPG2_AVAILABLE
     
     with get_db() as conn:
-        cursor = conn.cursor()
+        cursor = conn.cursor() if is_postgres else conn
         
         # Create locations table
         if is_postgres:
@@ -372,7 +383,7 @@ def login():
         password = request.form['password']
         
         database_url = os.environ.get('DATABASE_URL')
-        is_postgres = database_url is not None
+        is_postgres = database_url is not None and PSYCOPG2_AVAILABLE
         
         with get_db() as conn:
             if is_postgres:
@@ -407,7 +418,7 @@ def logout():
 def register():
     """Register page for carers to log patient events"""
     database_url = os.environ.get('DATABASE_URL')
-    is_postgres = database_url is not None
+    is_postgres = database_url is not None and PSYCOPG2_AVAILABLE
     
     if request.method == 'POST':
         patient_id = request.form['patient_id']
@@ -489,7 +500,7 @@ def admin():
     location_filter = request.args.get('location_filter', '')
     
     database_url = os.environ.get('DATABASE_URL')
-    is_postgres = database_url is not None
+    is_postgres = database_url is not None and PSYCOPG2_AVAILABLE
     
     # Calculate date range
     if date_filter == 'today':
@@ -670,7 +681,7 @@ def export_csv():
     location_filter = request.args.get('location_filter', '')
     
     database_url = os.environ.get('DATABASE_URL')
-    is_postgres = database_url is not None
+    is_postgres = database_url is not None and PSYCOPG2_AVAILABLE
     
     # Calculate date range
     if date_filter == 'today':
@@ -753,7 +764,7 @@ def export_csv():
 def get_location_patients(location_id):
     """Get all patients for a specific location"""
     database_url = os.environ.get('DATABASE_URL')
-    is_postgres = database_url is not None
+    is_postgres = database_url is not None and PSYCOPG2_AVAILABLE
     
     with get_db() as conn:
         if is_postgres:
@@ -790,7 +801,7 @@ def get_location_patients(location_id):
 def get_users():
     """Get all users and locations for management"""
     database_url = os.environ.get('DATABASE_URL')
-    is_postgres = database_url is not None
+    is_postgres = database_url is not None and PSYCOPG2_AVAILABLE
     
     with get_db() as conn:
         if is_postgres:
@@ -847,7 +858,7 @@ def update_user_location():
         return jsonify({'success': False, 'error': 'Missing parameters'})
     
     database_url = os.environ.get('DATABASE_URL')
-    is_postgres = database_url is not None
+    is_postgres = database_url is not None and PSYCOPG2_AVAILABLE
     
     with get_db() as conn:
         if is_postgres:
@@ -871,7 +882,7 @@ def add_location():
         return jsonify({'success': False, 'error': 'Missing parameters'})
     
     database_url = os.environ.get('DATABASE_URL')
-    is_postgres = database_url is not None
+    is_postgres = database_url is not None and PSYCOPG2_AVAILABLE
     
     with get_db() as conn:
         if is_postgres:
