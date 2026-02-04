@@ -371,8 +371,15 @@ def login():
         username = request.form['username']
         password = request.form['password']
         
+        database_url = os.environ.get('DATABASE_URL')
+        is_postgres = database_url is not None
+        
         with get_db() as conn:
-            user = conn.execute('SELECT * FROM users WHERE username = ?', (username,)).fetchone()
+            if is_postgres:
+                cursor = conn.cursor()
+                user = cursor.execute('SELECT * FROM users WHERE username = %s', (username,)).fetchone()
+            else:
+                user = conn.execute('SELECT * FROM users WHERE username = ?', (username,)).fetchone()
             
             if user and check_password_hash(user['password_hash'], password):
                 session['user_id'] = user['id']
@@ -399,6 +406,9 @@ def logout():
 @require_carer
 def register():
     """Register page for carers to log patient events"""
+    database_url = os.environ.get('DATABASE_URL')
+    is_postgres = database_url is not None
+    
     if request.method == 'POST':
         patient_id = request.form['patient_id']
         event_type = request.form['event_type']
@@ -407,10 +417,17 @@ def register():
         notes = request.form.get('notes', '')
         
         with get_db() as conn:
-            conn.execute('''
-                INSERT INTO events (patient_id, user_id, event_type, left_with, transport_mode, notes)
-                VALUES (?, ?, ?, ?, ?, ?)
-            ''', (patient_id, session['user_id'], event_type, left_with, transport_mode, notes))
+            if is_postgres:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    INSERT INTO events (patient_id, user_id, event_type, left_with, transport_mode, notes)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                ''', (patient_id, session['user_id'], event_type, left_with, transport_mode, notes))
+            else:
+                conn.execute('''
+                    INSERT INTO events (patient_id, user_id, event_type, left_with, transport_mode, notes)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                ''', (patient_id, session['user_id'], event_type, left_with, transport_mode, notes))
             conn.commit()
         
         flash('Event recorded successfully', 'success')
@@ -419,25 +436,47 @@ def register():
     # Get patients for this carer's location and recent events
     with get_db() as conn:
         # Get carer's location
-        carer = conn.execute('SELECT location_id FROM users WHERE id = ?', (session['user_id'],)).fetchone()
-        
-        # Get patients in same location
-        patients = conn.execute('''
-            SELECT p.*, l.name as location_name
-            FROM patients p
-            JOIN locations l ON p.location_id = l.id
-            WHERE p.location_id = ?
-            ORDER BY p.name
-        ''', (carer['location_id'],)).fetchall()
-        
-        recent_events = conn.execute('''
-            SELECT e.*, p.name as patient_name
-            FROM events e
-            JOIN patients p ON e.patient_id = p.id
-            WHERE e.user_id = ?
-            ORDER BY e.ts_utc DESC
-            LIMIT 20
-        ''', (session['user_id'],)).fetchall()
+        if is_postgres:
+            cursor = conn.cursor()
+            carer = cursor.execute('SELECT location_id FROM users WHERE id = %s', (session['user_id'],)).fetchone()
+            
+            # Get patients in same location
+            patients = cursor.execute('''
+                SELECT p.*, l.name as location_name
+                FROM patients p
+                JOIN locations l ON p.location_id = l.id
+                WHERE p.location_id = %s
+                ORDER BY p.name
+            ''', (carer['location_id'],)).fetchall()
+            
+            recent_events = cursor.execute('''
+                SELECT e.*, p.name as patient_name
+                FROM events e
+                JOIN patients p ON e.patient_id = p.id
+                WHERE e.user_id = %s
+                ORDER BY e.ts_utc DESC
+                LIMIT 20
+            ''', (session['user_id'],)).fetchall()
+        else:
+            carer = conn.execute('SELECT location_id FROM users WHERE id = ?', (session['user_id'],)).fetchone()
+            
+            # Get patients in same location
+            patients = conn.execute('''
+                SELECT p.*, l.name as location_name
+                FROM patients p
+                JOIN locations l ON p.location_id = l.id
+                WHERE p.location_id = ?
+                ORDER BY p.name
+            ''', (carer['location_id'],)).fetchall()
+            
+            recent_events = conn.execute('''
+                SELECT e.*, p.name as patient_name
+                FROM events e
+                JOIN patients p ON e.patient_id = p.id
+                WHERE e.user_id = ?
+                ORDER BY e.ts_utc DESC
+                LIMIT 20
+            ''', (session['user_id'],)).fetchall()
     
     return render_template('register.html', patients=patients, recent_events=recent_events)
 
@@ -449,6 +488,9 @@ def admin():
     patient_search = request.args.get('patient_search', '')
     location_filter = request.args.get('location_filter', '')
     
+    database_url = os.environ.get('DATABASE_URL')
+    is_postgres = database_url is not None
+    
     # Calculate date range
     if date_filter == 'today':
         start_date = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
@@ -458,8 +500,13 @@ def admin():
         start_date = datetime.min
     
     with get_db() as conn:
-        # Get all locations for filter
-        locations = conn.execute('SELECT * FROM locations ORDER BY name').fetchall()
+        if is_postgres:
+            cursor = conn.cursor()
+            # Get all locations for filter
+            locations = cursor.execute('SELECT * FROM locations ORDER BY name').fetchall()
+        else:
+            # Get all locations for filter
+            locations = conn.execute('SELECT * FROM locations ORDER BY name').fetchall()
         
         # Get currently on site patients by location
         currently_on_site_query = '''
@@ -480,10 +527,17 @@ def admin():
         '''
         
         if location_filter:
-            currently_on_site_query += ' AND l.id = ?'
-            currently_on_site_raw = conn.execute(currently_on_site_query + ' ORDER BY l.name, p.name', (location_filter,)).fetchall()
+            if is_postgres:
+                currently_on_site_query += ' AND l.id = %s'
+                currently_on_site_raw = cursor.execute(currently_on_site_query + ' ORDER BY l.name, p.name', (location_filter,)).fetchall()
+            else:
+                currently_on_site_query += ' AND l.id = ?'
+                currently_on_site_raw = conn.execute(currently_on_site_query + ' ORDER BY l.name, p.name', (location_filter,)).fetchall()
         else:
-            currently_on_site_raw = conn.execute(currently_on_site_query + ' ORDER BY l.name, p.name').fetchall()
+            if is_postgres:
+                currently_on_site_raw = cursor.execute(currently_on_site_query + ' ORDER BY l.name, p.name').fetchall()
+            else:
+                currently_on_site_raw = conn.execute(currently_on_site_query + ' ORDER BY l.name, p.name').fetchall()
         
         # Convert Row objects to dictionaries for JSON serialization
         currently_on_site = []
@@ -499,7 +553,7 @@ def admin():
             })
         
         # Get location statistics
-        location_stats = conn.execute('''
+        location_stats_query = '''
             WITH latest_events AS (
                 SELECT patient_id, MAX(ts_utc) as latest_ts
                 FROM events
@@ -521,10 +575,23 @@ def admin():
             FROM locations l
             LEFT JOIN current_status cs ON l.id = cs.location_id
             ORDER BY l.name
-        ''').fetchall()
+        '''
+        
+        if is_postgres:
+            location_stats = cursor.execute(location_stats_query).fetchall()
+        else:
+            location_stats = conn.execute(location_stats_query).fetchall()
         
         # Get recent events with filters
         query = '''
+            SELECT e.*, p.name as patient_name, u.username as carer_name,
+                   l.name as location_name
+            FROM events e
+            JOIN patients p ON e.patient_id = p.id
+            JOIN users u ON e.user_id = u.id
+            JOIN locations l ON p.location_id = l.id
+            WHERE e.ts_utc >= %s
+        ''' if is_postgres else '''
             SELECT e.*, p.name as patient_name, u.username as carer_name,
                    l.name as location_name
             FROM events e
@@ -536,19 +603,38 @@ def admin():
         params = [start_date.isoformat()]
         
         if patient_search:
-            query += ' AND p.name LIKE ?'
+            if is_postgres:
+                query += ' AND p.name LIKE %s'
+            else:
+                query += ' AND p.name LIKE ?'
             params.append(f'%{patient_search}%')
             
         if location_filter:
-            query += ' AND l.id = ?'
+            if is_postgres:
+                query += ' AND l.id = %s'
+            else:
+                query += ' AND l.id = ?'
             params.append(location_filter)
         
         query += ' ORDER BY e.ts_utc DESC LIMIT 200'
         
-        recent_events = conn.execute(query, params).fetchall()
+        if is_postgres:
+            recent_events = cursor.execute(query, params).fetchall()
+        else:
+            recent_events = conn.execute(query, params).fetchall()
         
         # Get daily activity stats for chart
-        daily_stats = conn.execute('''
+        daily_stats_query = '''
+            SELECT DATE(ts_utc) as date,
+                   COUNT(*) as total_events,
+                   SUM(CASE WHEN event_type = 'ARRIVED' THEN 1 ELSE 0 END) as arrivals,
+                   SUM(CASE WHEN event_type = 'LEFT' THEN 1 ELSE 0 END) as departures
+            FROM events
+            WHERE ts_utc >= %s
+            GROUP BY DATE(ts_utc)
+            ORDER BY date DESC
+            LIMIT 7
+        ''' if is_postgres else '''
             SELECT DATE(ts_utc) as date,
                    COUNT(*) as total_events,
                    SUM(CASE WHEN event_type = 'ARRIVED' THEN 1 ELSE 0 END) as arrivals,
@@ -558,7 +644,12 @@ def admin():
             GROUP BY DATE(ts_utc)
             ORDER BY date DESC
             LIMIT 7
-        ''', (start_date.isoformat(),)).fetchall()
+        '''
+        
+        if is_postgres:
+            daily_stats = cursor.execute(daily_stats_query, (start_date.isoformat(),)).fetchall()
+        else:
+            daily_stats = conn.execute(daily_stats_query, (start_date.isoformat(),)).fetchall()
     
     return render_template('admin.html', 
                          currently_on_site=currently_on_site,
@@ -578,6 +669,9 @@ def export_csv():
     patient_search = request.args.get('patient_search', '')
     location_filter = request.args.get('location_filter', '')
     
+    database_url = os.environ.get('DATABASE_URL')
+    is_postgres = database_url is not None
+    
     # Calculate date range
     if date_filter == 'today':
         start_date = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
@@ -595,21 +689,40 @@ def export_csv():
             JOIN patients p ON e.patient_id = p.id
             JOIN users u ON e.user_id = u.id
             JOIN locations l ON p.location_id = l.id
+            WHERE e.ts_utc >= %s
+        ''' if is_postgres else '''
+            SELECT e.ts_utc, p.name as patient_name, e.event_type, 
+                   e.left_with, e.transport_mode, e.notes, u.username as carer_name,
+                   l.name as location_name
+            FROM events e
+            JOIN patients p ON e.patient_id = p.id
+            JOIN users u ON e.user_id = u.id
+            JOIN locations l ON p.location_id = l.id
             WHERE e.ts_utc >= ?
         '''
         params = [start_date.isoformat()]
         
         if patient_search:
-            query += ' AND p.name LIKE ?'
+            if is_postgres:
+                query += ' AND p.name LIKE %s'
+            else:
+                query += ' AND p.name LIKE ?'
             params.append(f'%{patient_search}%')
             
         if location_filter:
-            query += ' AND l.id = ?'
+            if is_postgres:
+                query += ' AND l.id = %s'
+            else:
+                query += ' AND l.id = ?'
             params.append(location_filter)
         
         query += ' ORDER BY e.ts_utc DESC'
         
-        events = conn.execute(query, params).fetchall()
+        if is_postgres:
+            cursor = conn.cursor()
+            events = cursor.execute(query, params).fetchall()
+        else:
+            events = conn.execute(query, params).fetchall()
     
     # Create CSV
     output = StringIO()
@@ -639,14 +752,27 @@ def export_csv():
 @require_admin
 def get_location_patients(location_id):
     """Get all patients for a specific location"""
+    database_url = os.environ.get('DATABASE_URL')
+    is_postgres = database_url is not None
+    
     with get_db() as conn:
-        patients = conn.execute('''
-            SELECT p.id, p.name, u.username as primary_carer_username
-            FROM patients p
-            JOIN users u ON p.primary_carer_id = u.id
-            WHERE p.location_id = ?
-            ORDER BY p.name
-        ''', (location_id,)).fetchall()
+        if is_postgres:
+            cursor = conn.cursor()
+            patients = cursor.execute('''
+                SELECT p.id, p.name, u.username as primary_carer_username
+                FROM patients p
+                JOIN users u ON p.primary_carer_id = u.id
+                WHERE p.location_id = %s
+                ORDER BY p.name
+            ''', (location_id,)).fetchall()
+        else:
+            patients = conn.execute('''
+                SELECT p.id, p.name, u.username as primary_carer_username
+                FROM patients p
+                JOIN users u ON p.primary_carer_id = u.id
+                WHERE p.location_id = ?
+                ORDER BY p.name
+            ''', (location_id,)).fetchall()
         
         # Convert to list of dicts for JSON
         result = []
@@ -663,15 +789,29 @@ def get_location_patients(location_id):
 @require_admin
 def get_users():
     """Get all users and locations for management"""
+    database_url = os.environ.get('DATABASE_URL')
+    is_postgres = database_url is not None
+    
     with get_db() as conn:
-        users = conn.execute('''
-            SELECT u.id, u.username, u.role, u.location_id, l.name as location_name
-            FROM users u
-            LEFT JOIN locations l ON u.location_id = l.id
-            ORDER BY u.role, u.username
-        ''').fetchall()
-        
-        locations = conn.execute('SELECT id, name FROM locations ORDER BY name').fetchall()
+        if is_postgres:
+            cursor = conn.cursor()
+            users = cursor.execute('''
+                SELECT u.id, u.username, u.role, u.location_id, l.name as location_name
+                FROM users u
+                LEFT JOIN locations l ON u.location_id = l.id
+                ORDER BY u.role, u.username
+            ''').fetchall()
+            
+            locations = cursor.execute('SELECT id, name FROM locations ORDER BY name').fetchall()
+        else:
+            users = conn.execute('''
+                SELECT u.id, u.username, u.role, u.location_id, l.name as location_name
+                FROM users u
+                LEFT JOIN locations l ON u.location_id = l.id
+                ORDER BY u.role, u.username
+            ''').fetchall()
+            
+            locations = conn.execute('SELECT id, name FROM locations ORDER BY name').fetchall()
         
         users_list = []
         for user in users:
